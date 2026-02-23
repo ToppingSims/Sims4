@@ -125,7 +125,7 @@ Dette projekt er licenseret under MIT License - se [LICENSE](LICENSE) filen for 
 **Topping**
 
 - Website: [ts4.topping.dk](https://ts4.topping.dk)
-- GitHub: [@DIT-BRUGERNAVN](https://github.com/DIT-BRUGERNAVN)
+- GitHub: [@ToppingSims](https://github.com/ToppingSims)
 
 ## ⭐ Support
 
