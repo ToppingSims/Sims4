@@ -22,7 +22,7 @@ python -m pip install pyinstaller
 echo.
 
 echo Laver .exe fil med ikon...
-python -m PyInstaller --onefile --windowed --icon="ToppingSimsBackup.ico" --add-data "ToppingSimsBackup.ico;." --name="Sims4Backup" sims4_backup_v2.py
+python -m PyInstaller --onefile --windowed --icon="ToppingSimsBackup.ico" --add-data "ToppingSimsBackup.ico;." --name="Sims4Backup" sims4_backup.py
 echo.
 
 if exist "dist\Sims4Backup.exe" (

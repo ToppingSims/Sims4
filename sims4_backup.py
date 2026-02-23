@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import tkinter as tk
 from tkinter import messagebox, ttk, filedialog
@@ -12,24 +13,37 @@ class Sims4BackupApp:
     def __init__(self, root):
         self.root = root
         self.root.title("The Sims 4 Backup")
-        self.root.geometry("650x600")
+        self.root.geometry("650x650")
         self.root.resizable(False, False)  # Prevent resizing
         
         # Set window icon - try multiple paths for exe and script
         icon_loaded = False
+        
+        # Get the base path (works for both script and exe)
+        if getattr(sys, 'frozen', False):
+            # Running as compiled exe
+            base_path = sys._MEIPASS
+        else:
+            # Running as script
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        
         icon_paths = [
-            Path(__file__).parent / "ToppingSimsBackup.ico",  # Same folder as script
-            Path("ToppingSimsBackup.ico"),  # Current directory
-            Path(os.getcwd()) / "ToppingSimsBackup.ico",  # Working directory
+            os.path.join(base_path, "ToppingSimsBackup.ico"),
+            Path(__file__).parent / "ToppingSimsBackup.ico" if not getattr(sys, 'frozen', False) else None,
+            Path("ToppingSimsBackup.ico"),
+            Path(os.getcwd()) / "ToppingSimsBackup.ico",
         ]
         
         for icon_path in icon_paths:
+            if icon_path is None:
+                continue
             try:
-                if icon_path.exists():
-                    self.root.iconbitmap(str(icon_path))
+                icon_path_str = str(icon_path)
+                if os.path.exists(icon_path_str):
+                    self.root.iconbitmap(icon_path_str)
                     icon_loaded = True
                     break
-            except:
+            except Exception as e:
                 continue
         
         if not icon_loaded:
@@ -40,19 +54,22 @@ class Sims4BackupApp:
                 pass  # Silently fail if icon not found
         
         # Predefined folders to backup
-        self.folders_to_backup = [
-            r"C:\Users\maria\Documents\Electronic Arts\The Sims 4\Mods",
-            r"C:\Users\maria\Documents\Electronic Arts\The Sims 4\saves",
-            r"C:\Users\maria\Documents\Electronic Arts\The Sims 4\Tray"
-        ]
+        # Get current user's documents folder
+        user_documents = os.path.join(os.path.expanduser("~"), "Documents")
+        sims4_base = os.path.join(user_documents, "Electronic Arts", "The Sims 4")
+        
+        # Define all available folders with their default state
+        self.available_folders = {
+            "Mods": {"path": os.path.join(sims4_base, "Mods"), "enabled": tk.BooleanVar(value=True)},
+            "saves": {"path": os.path.join(sims4_base, "saves"), "enabled": tk.BooleanVar(value=True)},
+            "Tray": {"path": os.path.join(sims4_base, "Tray"), "enabled": tk.BooleanVar(value=True)}
+        }
         
         # Registry key for storing settings
         self.registry_key = r"Software\ToppingSims4Backup"
         
-        # Load saved backup destination or use default
+        # Load saved backup destination (empty on first use)
         self.backup_destination = self.load_config()
-        if not self.backup_destination:
-            self.backup_destination = r"C:\Users\maria\Desktop\TS4\_Backup MIS"
         
         self.create_widgets()
         self.check_folders()
@@ -90,12 +107,21 @@ class Sims4BackupApp:
         inner_padding = tk.Frame(info_frame, bg="white")
         inner_padding.pack(fill="x", padx=20, pady=15)
         
-        # List folders
-        for folder in self.folders_to_backup:
-            folder_name = os.path.basename(folder)
-            label = tk.Label(inner_padding, text=f"📁 {folder_name}", 
-                           font=("Arial", 10), anchor="w", bg="white", fg="#333333")
-            label.pack(fill="x", pady=3)
+        # List folders with checkboxes
+        for folder_name, folder_info in self.available_folders.items():
+            folder_container = tk.Frame(inner_padding, bg="white")
+            folder_container.pack(fill="x", pady=3)
+            
+            checkbox = tk.Checkbutton(folder_container, 
+                                     text=f"📁 {folder_name}",
+                                     variable=folder_info["enabled"],
+                                     font=("Arial", 10),
+                                     bg="white",
+                                     fg="#333333",
+                                     activebackground="white",
+                                     anchor="w",
+                                     cursor="hand2")
+            checkbox.pack(side="left")
         
         # Second box - Destination
         # Title above box
@@ -121,9 +147,11 @@ class Sims4BackupApp:
         dest_container.pack(fill="x")
         
         # Path label on the left
-        self.dest_label = tk.Label(dest_container, text=self.backup_destination, 
+        dest_text = self.backup_destination if self.backup_destination else "Ingen placering valgt - klik 'Skift placering'"
+        self.dest_label = tk.Label(dest_container, text=dest_text, 
                              font=("Arial", 9), wraplength=420, justify="left", 
-                             bg="white", fg="#333333", anchor="w")
+                             bg="white", fg="#999999" if not self.backup_destination else "#333333", 
+                             anchor="w")
         self.dest_label.pack(side="left", fill="x", expand=True)
         
         # Change button on the right
@@ -225,9 +253,9 @@ class Sims4BackupApp:
     def check_folders(self):
         """Check if source folders exist"""
         missing = []
-        for folder in self.folders_to_backup:
-            if not os.path.exists(folder):
-                missing.append(os.path.basename(folder))
+        for folder_name, folder_info in self.available_folders.items():
+            if not os.path.exists(folder_info["path"]):
+                missing.append(folder_name)
         
         if missing:
             self.status_label.config(
@@ -236,6 +264,19 @@ class Sims4BackupApp:
             )
             
     def start_backup(self):
+        # Check if backup destination is set
+        if not self.backup_destination:
+            messagebox.showwarning("Ingen placering valgt", 
+                                 "Vælg først hvor backup skal gemmes.\n\nKlik på 'Skift placering' knappen.")
+            return
+        
+        # Check if at least one folder is selected
+        selected_folders = [name for name, info in self.available_folders.items() if info["enabled"].get()]
+        if not selected_folders:
+            messagebox.showwarning("Ingen mapper valgt", 
+                                 "Vælg mindst én mappe der skal backup'es.\n\nSæt flueben i de mapper du vil have med.")
+            return
+        
         # Disable button during backup
         self.backup_btn_canvas.unbind("<Button-1>")
         self.backup_btn_canvas.config(cursor="")
@@ -251,6 +292,13 @@ class Sims4BackupApp:
             self.status_label.config(text="Starter backup...", fg="orange")
             self.root.update()
             
+            # Get selected folders
+            folders_to_backup = [
+                (name, info["path"]) 
+                for name, info in self.available_folders.items() 
+                if info["enabled"].get()
+            ]
+            
             # Create backup folder with timestamp
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             backup_folder = os.path.join(self.backup_destination, f"Backup_{timestamp}")
@@ -258,12 +306,11 @@ class Sims4BackupApp:
             # Create destination folder if it doesn't exist
             os.makedirs(backup_folder, exist_ok=True)
             
-            total_folders = len(self.folders_to_backup)
+            total_folders = len(folders_to_backup)
             self.progress['maximum'] = total_folders
             
-            for i, folder in enumerate(self.folders_to_backup, 1):
-                if os.path.exists(folder):
-                    folder_name = os.path.basename(folder)
+            for i, (folder_name, folder_path) in enumerate(folders_to_backup, 1):
+                if os.path.exists(folder_path):
                     dest_path = os.path.join(backup_folder, folder_name)
                     
                     self.status_label.config(text=f"Kopierer: {folder_name}")
@@ -272,13 +319,13 @@ class Sims4BackupApp:
                     self.root.update()
                     
                     # Copy the entire folder
-                    shutil.copytree(folder, dest_path)
+                    shutil.copytree(folder_path, dest_path)
                     
                     self.progress['value'] = i
                     self.root.update()
                 else:
                     self.progress_text.config(
-                        text=f"Springt over: {os.path.basename(folder)} (ikke fundet)"
+                        text=f"Springer over: {folder_name} (ikke fundet)"
                     )
             
             self.status_label.config(text="✅ Backup fuldført!", fg="green")
@@ -327,12 +374,12 @@ class Sims4BackupApp:
         """Allow user to change backup destination"""
         new_destination = filedialog.askdirectory(
             title="Vælg hvor backup skal gemmes",
-            initialdir=self.backup_destination if os.path.exists(self.backup_destination) else os.path.expanduser("~")
+            initialdir=self.backup_destination if self.backup_destination and os.path.exists(self.backup_destination) else os.path.expanduser("~")
         )
         
         if new_destination:
             self.backup_destination = new_destination
-            self.dest_label.config(text=self.backup_destination)
+            self.dest_label.config(text=self.backup_destination, fg="#333333")
             self.save_config()
             messagebox.showinfo("Placering ændret", 
                               f"Backup placering er nu:\n{self.backup_destination}")
